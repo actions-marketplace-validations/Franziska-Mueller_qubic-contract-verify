@@ -222,6 +222,11 @@ namespace contractverify
             "CharLiteral"
         },
         {
+            "test_fail_float_literal.h",
+            "[ ERROR ] Floating point literals are not allowed, found 0.5.\n",
+            "FloatLiteral"
+        },
+        {
             "test_fail_pointer_dereferencing.h",
             "[ ERROR ] Pointer dereferencing (unary operator `*`) is not allowed.\n",
             "PointerDereferencing"
@@ -398,8 +403,13 @@ namespace contractverify
         },
         {
             "test_fail_global_variable.h",
-            "[ ERROR ] Global variables are not allowed. You may use global constants (const/constexpr).\n",
+            "[ ERROR ] Global variables are not allowed. You may use global constants (constexpr only).\n",
             "GlobalVariable"
+        },
+        {
+            "test_fail_global_const.h",
+            "[ ERROR ] Global constants are only allowed as constexpr (due to a limitation in UEFI with initialization of const globals).\n",
+            "GlobalConst"
         },
         {
             "test_fail_global_function.h",
