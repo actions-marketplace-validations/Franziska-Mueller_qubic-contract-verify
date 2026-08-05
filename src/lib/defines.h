@@ -18,6 +18,7 @@ namespace contractverify
         TEMPL_SPEC = 4,  // this is needed to distinguish variables in template specs from normal variable declarations
         FUNC_SIG = 5,  // this is needed to distinguish variables/types in param lists/return types from normal variable declarations
         TYPEDEF = 6,  // this is needed to distinguish local variables (forbidden) from local typedefs (allowed)
+        USING_DECL = 7,  // this is needed to distinguish local variables or class/struct members from using declarations
     };
 
     static std::string getScopedName(const std::vector<std::string>& names, int startIndex = 0)
@@ -32,14 +33,23 @@ namespace contractverify
         return result.str();
     }
 
+    enum FileType
+    {
+        CONTRACT = 0,
+        ORACLE_INTERFACE = 1,
+    };
+
     struct AnalysisData
     {
+        FileType fileType;
+
         // data that will be collected while traversing the AST
         std::stack<ScopeSpec> scopeStack; // empty scope stack means global scope
         std::vector<std::string> scopeNames;
         std::stack<bool> allowedAsIOStruct; // this stack tracks whether the struct/class currently being analyzed may be allowed as input/output struct
         std::vector<std::string> additionalScopePrefixes;
         std::vector<std::vector<std::string>> additionalInputOutputTypes;
+        std::vector<std::string> oracleInterfaceFuncAllowedLocalVars;
 
         bool isDirectlyInClassOrStruct() const
         {
@@ -74,6 +84,8 @@ namespace contractverify
         "POST_INCOMING_TRANSFER",
         "POST_INCOMING_TRANSFER_WITH_LOCALS",
         "EXPAND",
+        "MIGRATE",
+        "MIGRATE_WITH_LOCALS",
         "LOG_DEBUG",
         "LOG_ERROR",
         "LOG_INFO",
@@ -94,10 +106,13 @@ namespace contractverify
         "CALL",
         "CALL_OTHER_CONTRACT_FUNCTION",
         "INVOKE_OTHER_CONTRACT_PROCEDURE",
-        "QUERY_ORACLE",
         "SELF",
         "SELF_INDEX",
         "STATIC_ASSERT",
+        // oracle macros
+        // "QUERY_ORACLE", -- due to a parser bug with macro parsing, it is better to not add this and let the parser treat it as function name
+        // "SUBSCRIBE_ORACLE", -- due to a parser bug with macro parsing, it is better to not add this and let the parser treat it as function name
+        "REGISTER_USER_PROCEDURE_NOTIFICATION",
         // shareholder voting macros
         "DEFINE_SHAREHOLDER_PROPOSAL_STORAGE",
         "IMPLEMENT_SetShareholderProposal",
@@ -130,6 +145,10 @@ namespace contractverify
         "AssetIssuanceSelect",
         "AssetOwnershipSelect",
         "AssetPossessionSelect",
+        // oracles
+        "OI",
+        // outsourced computation interfaces
+        "OCI",
         // other contract names
         "QX",
         "QUOTTERY",
@@ -178,8 +197,8 @@ namespace contractverify
         "TESTEXA::QueryQpiFunctions_input",
         "TESTEXA::QueryQpiFunctions_output",
         // Simple numeric types
-        "bool",
         "bit",
+        // bool isn't allowed in input due to the issue explained in https://github.com/qubic/core/pull/822
         "sint8",
         "uint8",
         "sint16",
@@ -233,5 +252,24 @@ namespace contractverify
 
         // BitArray<SIZE>
         // Array of allowed type...
+        // SlowAnySizeArray of allowed type...
+        // OI::*::OracleQuery
+        // OI::*::OracleReply
+        // OracleNotificationInput<*>
+    };
+
+
+    static const std::vector<std::string> allowedOracleInterfaceFunctionLocalsTypes = {
+        "bool",
+        "bit",
+        "sint8",
+        "uint8",
+        "sint16",
+        "uint16",
+        "sint32",
+        "uint32",
+        "sint64",
+        "uint64",
+        "uint128",
     };
 }

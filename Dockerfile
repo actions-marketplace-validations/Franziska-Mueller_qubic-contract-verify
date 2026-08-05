@@ -1,29 +1,30 @@
 # Base image
 FROM gcc:latest
 
-# Install cmake
-RUN apt-get update;              \
-    apt-get install -y cmake ;   \
-    apt-get install -y flex ;    \
-    apt-get install -y clang-tidy  
+# Install cmake and git (git is needed for submodules)
+RUN apt-get update && \
+    apt-get install -y cmake flex clang-tidy && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /contract-verify
 
 # Copy source code and cmake files
-COPY ./deps /contract-verify/deps
-COPY ./src /contract-verify/src
-COPY ./CMakeLists.txt /contract-verify/
+COPY CMakeLists.txt ./
+COPY src/ ./src/
+COPY deps/ ./deps/
 
 # Build CppParser dependency
-RUN cd /contract-verify/deps/CppParser ;     \
-    mkdir builds ;                           \
-    cd builds ;                              \
-    cmake -DCMAKE_BUILD_TYPE=Release .. ;    \
+RUN cd deps/CppParser && \
+    mkdir -p builds && \
+    cd builds && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
     cmake --build . --config Release
 
 # Build contract verify executable
-RUN cd /contract-verify/ ;             \
-    mkdir build ;                      \
-    cd build ;                         \
-    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_CONTRACTVERIFY_TESTS:BOOL=OFF .. ;    \
+RUN mkdir -p build && \
+    cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_CONTRACTVERIFY_TESTS:BOOL=OFF .. && \
     cmake --build . --config Release
 
 # Copy entrypoint script from repository to the filesystem path `/` of the container

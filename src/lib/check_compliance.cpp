@@ -52,14 +52,30 @@ namespace contractverify
 
             RETURN_IF_FALSE(isScopeResolutionAllowed(decl.name(), analysisData.additionalScopePrefixes));
 
+            analysisData.scopeStack.push(ScopeSpec::USING_DECL);
             RETURN_IF_FALSE(
                 std::visit(Overloaded{ 
                         [&](const std::unique_ptr<cppast::CppVarType>& varType) -> bool
                         {
+                            bool allowedAsIO = false;
                             if (varType)
                             {
-                                return checkVarType(*varType, stateStructName, analysisData);
+                                RETURN_IF_FALSE(checkVarType(*varType, stateStructName, analysisData));
+                                if (isTypeAllowedAsIO(varType->baseType(), analysisData))
+                                {
+                                    std::vector<std::string> scopedName = analysisData.scopeNames;
+                                    scopedName.push_back(decl.name());
+                                    analysisData.additionalInputOutputTypes.push_back(std::move(scopedName));
+                                    allowedAsIO = true;
+                                }
                             }
+
+                            if (!allowedAsIO && isInputOutputType(decl.name(), analysisData))
+                            {
+                                std::cout << "[ ERROR ] " << decl.name() << " is not allowed as input/output type. The input and output structs of contract user procedures and functions may only use integer and boolean types (such as uint64, sint8, bit) as well as id, Array, and BitArray, and struct types containing only allowed types." << std::endl;
+                                return false;
+                            }
+
                             return true;
                         },
                         [&](const std::unique_ptr<cppast::CppFunctionPointer>& funcPtr) -> bool
@@ -73,16 +89,23 @@ namespace contractverify
                         },
                         [&](const std::unique_ptr<cppast::CppCompound>& compound) -> bool
                         {
+                            // For ease of analysis, defining a compound type as IO type via a using declaration is not allowed.
+                            if (isInputOutputType(decl.name(), analysisData))
+                            {
+                                std::cout << "[ ERROR ] " << decl.name() << " is not allowed as input/output type. For ease of analysis, defining a compound type as IO type via a using declaration is forbidden." << std::endl;
+                                return false;
+                            }
                             if (compound)
                             {
                                 return checkCompound(*compound, stateStructName, analysisData);
                             }
                             return true;
-                        } 
+                        }
                     },
                     decl.definition()
                 )
             );
+            analysisData.scopeStack.pop();
 
             return true;
         }
@@ -91,6 +114,25 @@ namespace contractverify
         {
             if (fwdDecl.isTemplated())
                 RETURN_IF_FALSE(checkTemplSpec(fwdDecl.templateSpecification().value(), stateStructName, analysisData));
+            return true;
+        }
+    
+        bool checkEnum(const cppast::CppEnum& enumDecl, AnalysisData& analysisData)
+        {
+            analysisData.additionalScopePrefixes.push_back(enumDecl.name());
+
+            if (!enumDecl.name().empty() && !enumDecl.underlyingType().empty())
+            {
+                RETURN_IF_FALSE(isTypeAllowed(enumDecl.underlyingType(), analysisData.additionalScopePrefixes));
+
+                if (isTypeAllowedAsIO(enumDecl.underlyingType(), analysisData))
+                {
+                    std::vector<std::string> scopedName = analysisData.scopeNames;
+                    scopedName.push_back(enumDecl.name());
+                    analysisData.additionalInputOutputTypes.push_back(std::move(scopedName));
+                }
+            }
+
             return true;
         }
 
@@ -158,7 +200,8 @@ namespace contractverify
             break;
         }
 
-        bool checkSucceeded = compound.visitAll([&](const cppast::CppEntity& ent) -> bool { return checkEntity(ent, stateStructName, analysisData); });
+        if (!compound.visitAll([&](const cppast::CppEntity& ent) -> bool { return checkEntity(ent, stateStructName, analysisData); }))
+            return false;
 
         if (allowedAsIOPushed)
         {
@@ -170,9 +213,12 @@ namespace contractverify
             else
             {
                 // analyzed struct/class is not allowed as input/output type
-                if (isInputOutputType(compound.name()))
+                if (isInputOutputType(compound.name(), analysisData))
                 {
-                    std::cout << "[ ERROR ] " << compound.name() << " is not allowed as input/output type. The input and output structs of contract user procedures and functions may only use integer and boolean types (such as uint64, sint8, bit) as well as id, Array, and BitArray, and struct types containing only allowed types." << std::endl;
+                    std::string name = compound.name();
+                    if (name.empty())
+                        name = "unnamed struct";
+                    std::cout << "[ ERROR ] " << name << " is not allowed as input/output type. The input and output structs of contract user procedures and functions may only use integer and boolean types (such as uint64, sint8, bit) as well as id, Array, and BitArray, and struct types containing only allowed types." << std::endl;
                     return false;
                 }
             }
@@ -183,7 +229,7 @@ namespace contractverify
         if (scopeNamesPushed)
             analysisData.scopeNames.pop_back();
 
-        return checkSucceeded;
+        return true;
     }
 
     bool checkEntity(const cppast::CppEntity& entity, const std::string& stateStructName, AnalysisData& analysisData)
@@ -198,8 +244,7 @@ namespace contractverify
             return true;
 
         case cppast::CppEntityType::ENUM:
-            analysisData.additionalScopePrefixes.push_back(static_cast<const cppast::CppEnum&>(entity).name());
-            return true;
+            return checkEnum(static_cast<const cppast::CppEnum&>(entity), analysisData);
 
         case cppast::CppEntityType::MACRO_CALL:
             // macro arguments? but we are anyways restricted to the known macros
@@ -214,6 +259,10 @@ namespace contractverify
 
         case cppast::CppEntityType::NAMESPACE_ALIAS:
             std::cout << "[ ERROR ] Namespace alias is not allowed." << std::endl;
+            return false;
+
+        case cppast::CppEntityType::TYPEDEF_DECL_LIST:
+            std::cout << "[ ERROR ] Typedef lists are not allowed. Use separate typedefs instead." << std::endl;
             return false;
 
         case cppast::CppEntityType::FUNCTION_PTR:
@@ -258,9 +307,6 @@ namespace contractverify
 
         case cppast::CppEntityType::TYPEDEF_DECL:
             return checkTypedef(static_cast<const cppast::CppTypedefName&>(entity), stateStructName, analysisData);
-
-        case cppast::CppEntityType::TYPEDEF_DECL_LIST:
-            return checkTypedefList(static_cast<const cppast::CppTypedefList&>(entity), stateStructName, analysisData);
 
         case cppast::CppEntityType::GOTO_STATEMENT:
             return checkGotoStatement(static_cast<const cppast::CppGotoStatement&>(entity), stateStructName, analysisData);
@@ -308,16 +354,27 @@ namespace contractverify
         }
     }
 
-    bool checkCompliance(const cppast::CppCompound& compound, const std::string& stateStructName)
+    bool checkCompliance(const cppast::CppCompound& compound, const std::string& stateStructName, FileType fileType)
     {
         AnalysisData analysisData;
+        analysisData.fileType = fileType;
         return checkEntity(compound, stateStructName, analysisData);
     }
 
-    bool checkCompliance(const cppast::CppCompound& compound)
+    bool checkCompliance(const cppast::CppCompound& compound, FileType fileType)
     {
-        std::string stateStructName = contractverify::findStateStructName(compound);
-        return checkCompliance(compound, stateStructName);
+        std::string stateStructName;
+        if (fileType == FileType::CONTRACT)
+        {
+            stateStructName = findStateStructName(compound);
+        }
+        else if (fileType == FileType::ORACLE_INTERFACE)
+        {
+            stateStructName = findOracleInterfaceStructNameAndCheckTopLevel(compound);
+        }
+        if (stateStructName.empty())
+            return false;
+        return checkCompliance(compound, stateStructName, fileType);
     }
 
     std::unique_ptr<cppast::CppCompound> parseAST(const std::string& filepath)
@@ -366,6 +423,69 @@ namespace contractverify
                 return true;
             }
         );
+
+        if (name.empty())
+            std::cout << "[ ERROR ] The contract must contain a global-scope struct that is derived from ContractBase." << std::endl;
+
+        return name;
+    }
+
+    std::string findOracleInterfaceStructNameAndCheckTopLevel(const cppast::CppCompound& ast)
+    {
+        std::string name = "";
+        unsigned int numStructs = 0;
+        bool foundForbiddenEntities = false;
+
+        if (ast.compoundType() != cppast::CppCompoundType::FILE)
+        {
+            std::cout << "[ ERROR ] Need a top-level CppCompound (compound type FILE) for finding the oracle interface struct name." << std::endl;
+            return name;
+        }
+
+        // `visitAll` visits the entities sequentially, so we do not need any lock for `name` and others
+        ast.visitAll([&](const cppast::CppEntity& entity) -> bool
+            {
+                switch (entity.entityType())
+                {
+                case cppast::CppEntityType::COMPOUND:
+                {
+                    const auto& compound = static_cast<const cppast::CppCompound&>(entity);
+                    if (compound.compoundType() == cppast::CppCompoundType::STRUCT || compound.compoundType() == cppast::CppCompoundType::CLASS)
+                    {
+                        // one struct or class is allowed
+                        name = compound.name();
+                        ++numStructs;
+                        return true;
+                    }
+                }
+
+                case cppast::CppEntityType::DOCUMENTATION_COMMENT:
+                case cppast::CppEntityType::USING_NAMESPACE:
+                    // allowed
+                    return true;
+
+                case cppast::CppEntityType::USING_DECL:
+                case cppast::CppEntityType::TYPEDEF_DECL:
+                case cppast::CppEntityType::TYPEDEF_DECL_LIST:
+                case cppast::CppEntityType::FUNCTION_PTR:
+                case cppast::CppEntityType::NAMESPACE_ALIAS:
+                case cppast::CppEntityType::PREPROCESSOR:
+                    // forbidden but checked later -> allow for now to print more specific error message
+                    return true;
+                }
+
+                foundForbiddenEntities = true;
+
+                // need to return true in any case because `visitAll` interrupts when the callback returns false on an entity
+                return true;
+            }
+        );
+
+        if (numStructs != 1 || foundForbiddenEntities)
+        {
+            std::cout << "[ ERROR ] The oracle interface must contain exactly one struct definition. Other definition/declarations are forbidden." << std::endl;
+            name = "";
+        }
 
         return name;
     }

@@ -2,5 +2,8 @@ using namespace QPI;
 
 struct TESTCON : public ContractBase
 {
-    char c = 'a';
+    struct StateData
+    {
+        char c = 'a';
+    };
 };

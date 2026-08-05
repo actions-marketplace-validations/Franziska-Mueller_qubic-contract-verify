@@ -3,5 +3,8 @@ using namespace QPI;
 struct TESTCON : public ContractBase
 {
 public:
-    int& dummy = const_cast<int&>(someConstIntVar);
+    struct StateData
+    {
+        uint32& dummy = const_cast<uint32&>(someConstIntVar);
+    };
 };

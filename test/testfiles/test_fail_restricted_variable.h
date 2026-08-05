@@ -3,5 +3,8 @@ using namespace QPI;
 struct TESTCON : public ContractBase
 {
 public:
-    int dummy = __restrictedVariable;
+    struct StateData
+    {
+        uint32 dummy = __restrictedVariable;
+    };
 };

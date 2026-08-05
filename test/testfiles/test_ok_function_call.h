@@ -3,5 +3,8 @@ using namespace QPI;
 struct TESTCON : public ContractBase
 {
 public:
-    int dummy = addOne(12);
+    struct StateData
+    {
+        uint32 dummy = addOne(12);
+    };
 };

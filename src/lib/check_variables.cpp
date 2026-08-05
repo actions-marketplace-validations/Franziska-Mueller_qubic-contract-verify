@@ -108,7 +108,36 @@ namespace contractverify
         if (!(analysisData.scopeStack.empty() || analysisData.scopeStack.top() == ScopeSpec::STRUCT || analysisData.scopeStack.top() == ScopeSpec::CLASS
             || analysisData.scopeStack.top() == ScopeSpec::FUNC_SIG || analysisData.scopeStack.top() == ScopeSpec::TYPEDEF))
         {
-            std::cout << "[ ERROR ] Local variables are not allowed, found variable with name " << var.name() << "." << std::endl;
+            if (analysisData.fileType == FileType::ORACLE_INTERFACE)
+            {
+                if (!isTypeAllowedAsOracleInterfaceFunctionLocal(var.varType().baseType()))
+                {
+                    std::cout << "[ ERROR ] Found local variable of forbidden type with name " << var.name() << "." << std::endl;
+                    return false;
+                }
+
+                analysisData.oracleInterfaceFuncAllowedLocalVars.push_back(var.name());
+                if (analysisData.oracleInterfaceFuncAllowedLocalVars.size() > 10)
+                {
+                    std::cout << "[ ERROR ] Too many local variables. Variable with name " << var.name() << " exceeds the limit." << std::endl;
+                    return false;
+                }
+            }
+            else
+            {
+                std::cout << "[ ERROR ] Local variables are not allowed, found variable with name " << var.name() << "." << std::endl;
+                return false;
+            }
+        }
+
+        // Variables directly in the state struct must be in a nested struct (e.g., StateData)
+        if (analysisData.fileType == FileType::CONTRACT
+            && !analysisData.scopeStack.empty()
+            && (analysisData.scopeStack.top() == ScopeSpec::STRUCT || analysisData.scopeStack.top() == ScopeSpec::CLASS)
+            && analysisData.scopeNames.size() == 1
+            && analysisData.scopeNames[0] == stateStructName)
+        {
+            std::cout << "[ ERROR ] Variable declarations are not allowed directly in the state struct. Use the nested struct StateData for state variables." << std::endl;
             return false;
         }
 
@@ -124,26 +153,6 @@ namespace contractverify
 
         RETURN_IF_FALSE(checkVarType(var.varType(), stateStructName, analysisData));
         RETURN_IF_FALSE(checkVarDecl(var.varDecl(), stateStructName, analysisData));
-
-        // typedef can be used to define IO types, e.g. `typedef sint64 SomeFunction_input;`
-        // typedef can also be used to give new names to already allowed types
-        if (!analysisData.scopeStack.empty() && analysisData.scopeStack.top() == ScopeSpec::TYPEDEF)
-        {
-            if (isTypeAllowedAsIO(var.varType().baseType(), analysisData))
-            {
-                std::vector<std::string> scopedName = analysisData.scopeNames;
-                scopedName.push_back(var.varDecl().name());
-                analysisData.additionalInputOutputTypes.push_back(std::move(scopedName));
-            }
-            else
-            {
-                if (isInputOutputType(var.varDecl().name()))
-                {
-                    std::cout << "[ ERROR ] " << var.varDecl().name() << " is not allowed as input/output type. The input and output structs of contract user procedures and functions may only use integer and boolean types (such as uint64, sint8, bit) as well as id, Array, and BitArray, and struct types containing only allowed types." << std::endl;
-                    return false;
-                }
-            }
-        }
 
         return true;
     }

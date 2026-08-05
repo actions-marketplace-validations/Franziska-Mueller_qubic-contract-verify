@@ -2,6 +2,8 @@
 
 This in a tool that automatically checks that C++ files comply with the C++ language feature restrictions Qubic imposes on smart contract (SC) files.
 
+It also support checking of Qubic Oracle Interface definition files.
+
 ## Contract Verify Container Action
 
 This repository provides a docker-based container action that can be used in a GitHub workflow.
@@ -29,6 +31,12 @@ The `filepaths` input can be a single file or a comma-separated list of files (w
 
 ### Prerequisites
 
+Get the CppParser dependency as a submodule:
+
+```
+git submodule update --init --recursive
+```
+
 Configure the CppParser dependency using cmake:
 
 ```
@@ -39,7 +47,8 @@ cmake ..
 ```
 
 You can then build CppParser, depending on your OS:
-- [ Linux ] Run `make` in the `builds` folder.
+- [ All OS ] Run `cmake --build .` in the `builds` folder.
+- [ Linux / MacOS ] Run `make` in the `builds` folder.
 - [ Windows ] Open the solution file cmake created in the `builds` folder in Visual Studio and build it.
 
 ### Build the Contract Verify Tool
@@ -53,7 +62,7 @@ cmake ..
 cmake will try to find the CppParser dependency (variable `cppparser_DIR`). If it cannot find it automatically, manually point the variable to the `deps/CppParser/builds/` directory (the one containing `cppparserConfig.cmake`).
 You can configure cmake whether to include the test project by setting the `BUILD_CONTRACTVERIFY_TESTS` variable accordingly.
 
-You can then build the tool via `make` (Linux) or Visual Studio (Windows) as detailed in the previous step when building the dependencies.
+You can then build the tool via `cmake --build` (all OS), `make` (Linux/MacOS), or Visual Studio (Windows) as detailed in the previous step when building the dependencies.
 
 ### Run the Contract Verify Tool
 
@@ -61,3 +70,7 @@ Navigate to your `build/src/<CONFIGURATION>` directory where `CONFIGURATION` is 
 Run the tool on your contract file:
 
 `./contractverify <FILEPATH>`
+
+In order to check an Oracle Interface, run:
+
+`./contractverify --oi <FILEPATH>`
