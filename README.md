@@ -1,3 +1,5 @@
+# This repository is DEPRECATED, please use the official [qubic/contract-verify](https://github.com/qubic/contract-verify) repository instead!
+
 # Qubic Contract Verification Tool
 
 This in a tool that automatically checks that C++ files comply with the C++ language feature restrictions Qubic imposes on smart contract (SC) files.

@@ -200,6 +200,10 @@ namespace contractverify
             "InputOutputTypes9"
         },
         {
+            "test_ok_private_input_output.h",
+            "PrivateInputOutputTypes"
+        },
+        {
             "test_ok_state_data.h",
             "StateData"
         },
@@ -544,6 +548,11 @@ namespace contractverify
             "test_fail_input_output_9.h",
             "[ ERROR ] SomeFunction_input is not allowed as input/output type. The input and output structs of contract user procedures and functions may only use integer and boolean types (such as uint64, sint8, bit) as well as id, Array, and BitArray, and struct types containing only allowed types.\n",
             "InputOutputTypes9"
+        },
+        {
+            "test_fail_public_input_output.h",
+            "[ ERROR ] PublicFunction_output is not allowed as input/output type. The input and output structs of contract user procedures and functions may only use integer and boolean types (such as uint64, sint8, bit) as well as id, Array, and BitArray, and struct types containing only allowed types.\n",
+            "PublicInputOutputTypes"
         },
         {
             "test_fail_input_output_10.h",

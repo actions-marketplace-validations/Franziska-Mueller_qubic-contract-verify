@@ -187,6 +187,13 @@ namespace contractverify
         // First remove all whitespace
         std::erase_if(name, [](unsigned char c) { return std::isspace(c); });
 
+        // PRIVATE_* input/output data is used only by internal calls and is not serialized
+        // through the public ABI. Other type-safety checks still apply to these structures.
+        if (analysisData.privateInputOutputTypes.contains(name))
+        {
+          return false;
+        }
+
         if (name.length() >= 6 && name.compare(name.length() - 6, 6, "_input") == 0)
             return true;
         if (name.length() >= 7 && name.compare(name.length() - 7, 7, "_output") == 0)

@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <stack>
+#include <unordered_set>
 #include <vector>
 
 #define RETURN_IF_FALSE(x) { if(!x) return false; } // wrapped in braces to make it work correctly when used inside an `if` block that is followed by `else`
@@ -50,6 +51,9 @@ namespace contractverify
         std::vector<std::string> additionalScopePrefixes;
         std::vector<std::vector<std::string>> additionalInputOutputTypes;
         std::vector<std::string> oracleInterfaceFuncAllowedLocalVars;
+        // Exact <handler>_input and <handler>_output names belonging to PRIVATE_* handlers.
+        // These types never cross the public contract ABI and do not need its serialization restrictions.
+        std::unordered_set<std::string> privateInputOutputTypes;
 
         bool isDirectlyInClassOrStruct() const
         {

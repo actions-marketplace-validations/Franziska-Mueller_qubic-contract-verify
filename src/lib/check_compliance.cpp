@@ -1,9 +1,13 @@
 #include "check_compliance.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include <cppparser/cppparser.h>
@@ -20,6 +24,72 @@ namespace contractverify
 {
     namespace
     {
+        // Macro arguments are parsed as text, so validate the handler name before using it
+        // to construct generated <handler>_input and <handler>_output type names.
+        bool isIdentifier(std::string_view name)
+        {
+            if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name.front())) || name.front() == '_'))
+            {
+              return false;
+            }
+
+            return std::all_of(name.begin() + 1, name.end(), [](unsigned char c)
+                {
+                    return std::isalnum(c) || c == '_';
+                });
+        }
+
+        void collectPrivateInputOutputTypesFromMacro(const cppast::CppMacroCall& macro, AnalysisData& analysisData)
+        {
+            std::string macroCall = macro.macroCall();
+            // CppParser preserves formatting inside macro calls. Removing whitespace makes
+            // PRIVATE_FUNCTION ( Name ) equivalent to PRIVATE_FUNCTION(Name).
+            std::erase_if(macroCall, [](unsigned char c) { return std::isspace(c); });
+
+            static constexpr std::array privateMacroNames = {
+                "PRIVATE_FUNCTION",
+                "PRIVATE_FUNCTION_WITH_LOCALS",
+                "PRIVATE_PROCEDURE",
+                "PRIVATE_PROCEDURE_WITH_LOCALS",
+            };
+
+            for (const std::string_view macroName : privateMacroNames)
+            {
+                const std::string prefix = std::string(macroName) + '(';
+                if (macroCall.starts_with(prefix) && macroCall.ends_with(')'))
+                {
+                    const std::string functionName = macroCall.substr(prefix.length(), macroCall.length() - prefix.length() - 1);
+                    if (isIdentifier(functionName))
+                    {
+                        analysisData.privateInputOutputTypes.insert(functionName + "_input");
+                        analysisData.privateInputOutputTypes.insert(functionName + "_output");
+                    }
+                    break;
+                }
+            }
+        }
+
+        void collectPrivateInputOutputTypes(const cppast::CppCompound& compound, std::string_view stateStructName, AnalysisData& analysisData)
+        {
+            if (compound.name() == stateStructName)
+            {
+                // Only macros declared directly inside the state struct define contract handlers.
+                // Ignoring nested blocks prevents an unrelated macro call from disabling public I/O checks.
+                compound.visit<cppast::CppMacroCall>([&](const cppast::CppMacroCall& macro) -> bool
+                    {
+                        collectPrivateInputOutputTypesFromMacro(macro, analysisData);
+                        return true;
+                    });
+                return;
+            }
+
+            compound.visit<cppast::CppCompound>([&](const cppast::CppCompound& child) -> bool
+                {
+                    collectPrivateInputOutputTypes(child, stateStructName, analysisData);
+                    return true;
+                });
+        }
+
         bool checkUsingNamespace(const cppast::CppUsingNamespaceDecl& decl, const std::string& stateStructName, AnalysisData& analysisData)
         {
             // in global scope, only namespace QPI is allowed
@@ -358,6 +428,12 @@ namespace contractverify
     {
         AnalysisData analysisData;
         analysisData.fileType = fileType;
+        if (fileType == FileType::CONTRACT)
+        {
+            // Input/output types are usually declared before their PRIVATE_* handler macro.
+            // Collect private handler names first so the main traversal knows their visibility.
+            collectPrivateInputOutputTypes(compound, stateStructName, analysisData);
+        }
         return checkEntity(compound, stateStructName, analysisData);
     }
 
